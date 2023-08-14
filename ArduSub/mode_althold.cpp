@@ -19,9 +19,14 @@ bool ModeAlthold::init(bool ignore_checks) {
     return true;
 }
 
-// althold_run - runs the althold controller
-// should be called at 100hz or more
 void ModeAlthold::run()
+{
+    run_pre();
+    control_depth();
+    run_post();
+}
+
+void ModeAlthold::run_pre()
 {
     uint32_t tnow = AP_HAL::millis();
 
@@ -87,9 +92,10 @@ void ModeAlthold::run()
             attitude_control->input_euler_angle_roll_pitch_yaw(target_roll, target_pitch, sub.last_pilot_heading, true);
         }
     }
+}
 
-    control_depth();
-
+void ModeAlthold::run_post()
+{
     motors.set_forward(channel_forward->norm_input());
     motors.set_lateral(channel_lateral->norm_input());
 }
@@ -110,5 +116,4 @@ void ModeAlthold::control_depth() {
 
     position_control->set_pos_target_z_from_climb_rate_cm(target_climb_rate_cm_s);
     position_control->update_z_controller();
-
 }

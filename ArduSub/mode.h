@@ -49,7 +49,8 @@ public:
         SURFACE =       9,  // automatically return to surface, pilot maintains horizontal control
         POSHOLD =      16,  // automatic position hold with manual override, with automatic throttle
         MANUAL =       19,  // Pass-through input with no stabilization
-        MOTOR_DETECT = 20   // Automatically detect motors orientation
+        MOTOR_DETECT = 20,  // Automatically detect motors orientation
+        RNG_HOLD =     21   // Hold rangefinder value (distance above terrain)
     };
 
     // constructor
@@ -266,10 +267,34 @@ public:
 
 protected:
 
+    void run_pre();
+    void run_post();
+
     const char *name() const override { return "ALT_HOLD"; }
     const char *name4() const override { return "ALTH"; }
 };
 
+
+class ModeRnghold : public ModeAlthold
+{
+
+public:
+    // inherit constructor
+    using ModeAlthold::ModeAlthold;
+
+    virtual void run() override;
+
+    bool init(bool ignore_checks) override;
+
+protected:
+
+    const char *name() const override { return "RNG_HOLD"; }
+    const char *name4() const override { return "RNGH"; }
+
+private:
+
+    void control_range();
+};
 
 class ModeGuided : public Mode
 {

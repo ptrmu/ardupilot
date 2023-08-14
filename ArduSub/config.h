@@ -58,6 +58,18 @@
 # define RANGEFINDER_GAIN_DEFAULT 0.8f     // gain for controlling how quickly rangefinder range adjusts target altitude (lower means slower reaction)
 #endif
 
+#ifndef RNGFND_P_DEFAULT
+# define RNGFND_P_DEFAULT 0.4f     // default P term for rangefinder_pid
+#endif
+
+#ifndef RNGFND_I_DEFAULT
+# define RNGFND_I_DEFAULT 0.0f     // default I term for rangefinder_pid
+#endif
+
+#ifndef RNGFND_D_DEFAULT
+# define RNGFND_D_DEFAULT 0.0f     // default D term for rangefinder_pid
+#endif
+
 #ifndef THR_SURFACE_TRACKING_VELZ_MAX
 # define THR_SURFACE_TRACKING_VELZ_MAX 150 // max vertical speed change while surface tracking with rangefinder
 #endif

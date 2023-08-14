@@ -114,7 +114,7 @@ class AutoTestSub(AutoTest):
             raise NotAchievedException("Did not get GLOBAL_POSITION_INT")
         pwm = 1300
         if msg.relative_alt/1000.0 < -6.0:
-            # need to g`o up, not down!
+            # need to go up, not down!
             pwm = 1700
         self.set_rc(Joystick.Throttle, pwm)
         self.wait_altitude(altitude_min=-6, altitude_max=-5)
@@ -166,8 +166,33 @@ class AutoTestSub(AutoTest):
         self.watch_altitude_maintained()
         self.disarm_vehicle()
 
+    def RangeHold(self):
+        """Test RNG_HOLD mode"""
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.change_mode('ALT_HOLD')
+
+        # Dive so that rangefinder can see the seafloor
+        msg = self.mav.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=5)
+        if msg is None:
+            raise NotAchievedException("Did not get GLOBAL_POSITION_INT")
+        pwm = 1300
+        if msg.relative_alt/1000.0 < -41.0:
+            pwm = 1700
+        self.set_rc(Joystick.Throttle, pwm)
+        self.wait_altitude(altitude_min=-41, altitude_max=-40, relative=False, timeout=60)
+        self.set_rc(Joystick.Throttle, 1500)
+
+        # Let the vehicle settle
+        self.delay_sim_time(1)
+
+        # Switch to RNG_HOLD
+        self.change_mode(21)
+        self.watch_altitude_maintained()
+        self.disarm_vehicle()
+
     def ModeChanges(self, delta=0.2):
-        """Check if alternating between ALTHOLD, STABILIZE and POSHOLD affects altitude"""
+        """Check if alternating between ALTHOLD, STABILIZE, POSHOLD and RNG_HOLD (mode 21) affects altitude"""
         self.wait_ready_to_arm()
         self.arm_vehicle()
         # zero buoyancy and no baro noise
@@ -187,11 +212,15 @@ class AutoTestSub(AutoTest):
         self.delay_sim_time(2)
         self.change_mode('STABILIZE')
         self.delay_sim_time(2)
+        self.change_mode(21)
+        self.delay_sim_time(2)
         self.change_mode('ALT_HOLD')
         self.delay_sim_time(2)
         self.change_mode('STABILIZE')
         self.delay_sim_time(2)
         self.change_mode('ALT_HOLD')
+        self.delay_sim_time(2)
+        self.change_mode(21)
         self.delay_sim_time(2)
         self.change_mode('MANUAL')
         self.disarm_vehicle()
@@ -523,6 +552,7 @@ class AutoTestSub(AutoTest):
         ret.extend([
             self.DiveManual,
             self.AltitudeHold,
+            self.RangeHold,
             self.PositionHold,
             self.ModeChanges,
             self.DiveMission,

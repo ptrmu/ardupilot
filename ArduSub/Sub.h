@@ -62,6 +62,7 @@
 #include <AP_JSButton/AP_JSButton.h>   // Joystick/gamepad button function assignment
 #include <AP_LeakDetector/AP_LeakDetector.h> // Leak detector
 #include <AP_Proximity/AP_Proximity.h>
+#include <AC_PID/AC_PID.h>
 
 // Local modules
 #include "defines.h"
@@ -115,6 +116,7 @@ public:
     friend class ModeStabilize;
     friend class ModeAcro;
     friend class ModeAlthold;
+    friend class ModeRnghold;
     friend class ModeGuided;
     friend class ModePoshold;
     friend class ModeAuto;
@@ -156,6 +158,35 @@ private:
         uint32_t last_healthy_ms;
         LowPassFilterFloat alt_cm_filt; // altitude filter
     } rangefinder_state = { false, false, 0, 0 };
+
+#if RANGEFINDER_ENABLED == ENABLED
+    class SurfaceTracking {
+    public:
+        // pilot can enable or disable tracking
+        void enable(bool _enabled);
+
+        // reset controller, target_rangefinder_cm = next healthy rangefinder reading
+        void reset();
+
+        // get target rangefinder
+        float get_target_rangefinder_cm() const { return target_rangefinder_cm; }
+
+        // set target rangefinder
+        void set_target_rangefinder_cm(float new_target_cm);
+
+        // track seafloor, call from main control loop
+        void update_surface_offset();
+
+        // rangefinder PID, must be public so that AP_Param can see it
+        AC_PID pid_rangefinder{RNGFND_P_DEFAULT, RNGFND_I_DEFAULT, RNGFND_D_DEFAULT,
+                               0.0, 0.0, 5.0, 5.0, 5.0};
+
+    private:
+        bool enabled = false;                 // true if pilot enabled surface tracking
+        bool reset_target = false;            // true if target should be reset
+        float target_rangefinder_cm = 0;      // target distance to seafloor
+    } surface_tracking;
+#endif
 
 #if AP_RPM_ENABLED
     AP_RPM rpm_sensor;
@@ -274,7 +305,6 @@ private:
     // Altitude
     // The cm/s we are moving up or down based on filtered data - Positive = UP
     int16_t climb_rate;
-    float target_rangefinder_alt;      // desired altitude in cm above the ground
 
     // Turn counter
     int32_t quarter_turn_count;
@@ -570,6 +600,7 @@ private:
     ModeStabilize mode_stabilize;
     ModeAcro mode_acro;
     ModeAlthold mode_althold;
+    ModeRnghold mode_rnghold;
     ModeAuto mode_auto;
     ModeGuided mode_guided;
     ModePoshold mode_poshold;

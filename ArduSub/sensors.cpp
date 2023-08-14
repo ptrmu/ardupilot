@@ -18,6 +18,7 @@ void Sub::read_barometer()
 void Sub::init_rangefinder()
 {
 #if RANGEFINDER_ENABLED == ENABLED
+    rangefinder.set_log_rfnd_bit(MASK_LOG_CTUN);
     rangefinder.init(ROTATION_PITCH_270);
     rangefinder_state.alt_cm_filt.set_cutoff_frequency(RANGEFINDER_WPNAV_FILT_HZ);
     rangefinder_state.enabled = rangefinder.has_orientation(ROTATION_PITCH_270);
@@ -69,5 +70,6 @@ void Sub::read_rangefinder()
 // return true if rangefinder_alt can be used
 bool Sub::rangefinder_alt_ok() const
 {
-    return (rangefinder_state.enabled && rangefinder_state.alt_healthy);
+    uint32_t now = AP_HAL::millis();
+    return (rangefinder_state.enabled && rangefinder_state.alt_healthy && now - rangefinder_state.last_healthy_ms < RANGEFINDER_TIMEOUT_MS);
 }

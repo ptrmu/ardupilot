@@ -123,6 +123,7 @@ float Sub::get_pilot_desired_climb_rate(float throttle_control)
     return desired_rate;
 }
 
+#if 0
 // get_surface_tracking_climb_rate - hold vehicle at the desired distance above the ground
 //      returns climb rate (in cm/s) which should be passed to the position controller
 float Sub::get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt)
@@ -162,6 +163,7 @@ float Sub::get_surface_tracking_climb_rate(int16_t target_rate, float current_al
     return (float)target_rate;
 #endif
 }
+#endif
 
 // rotate vector from vehicle's perspective to North-East frame
 void Sub::rotate_body_frame_to_NE(float &x, float &y)

@@ -583,6 +583,10 @@ const AP_Param::Info Sub::var_info[] = {
     // @Group: RNGFND
     // @Path: ../libraries/AP_RangeFinder/AP_RangeFinder.cpp
     GOBJECT(rangefinder,   "RNGFND", RangeFinder),
+
+    // @Group: RNGFND_PID_
+    // @Path: ../libraries/AC_PID/AC_PID.cpp
+    GOBJECTN(surface_tracking.pid_rangefinder, pid_rangefinder, "RNGFND_PID_", AC_PID),
 #endif
 
 #if AP_TERRAIN_AVAILABLE

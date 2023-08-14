@@ -156,6 +156,7 @@ public:
         k_param_pi_vel_xy, // deprecated
         k_param_p_vel_z, // deprecated
         k_param_pid_accel_z, // deprecated
+        k_param_pid_rangefinder,
 
 
         // Failsafes
