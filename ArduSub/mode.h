@@ -279,8 +279,8 @@ class ModeRnghold : public ModeAlthold
 {
 
 public:
-    // inherit constructor
-    using ModeAlthold::ModeAlthold;
+    // constructor
+    ModeRnghold();
 
     virtual void run() override;
 
@@ -294,6 +294,10 @@ protected:
 private:
 
     void control_range();
+
+    // monitor depth delta while pilot is in control, and apply the delta to the rangefinder target
+    bool pilot_in_control;
+    float pilot_control_start_z_cm;
 };
 
 class ModeGuided : public Mode

@@ -155,9 +155,11 @@ private:
         bool enabled:1;
         bool alt_healthy:1; // true if we can trust the altitude from the rangefinder
         int16_t alt_cm;     // tilt compensated altitude (in cm) from rangefinder
+        int16_t min_cm;     // min rangefinder distance (in cm)
+        int16_t max_cm;     // max rangefinder distance (in cm)
         uint32_t last_healthy_ms;
         LowPassFilterFloat alt_cm_filt; // altitude filter
-    } rangefinder_state = { false, false, 0, 0 };
+    } rangefinder_state = { false, false, 0, 0, 0, 0 };
 
 #if RANGEFINDER_ENABLED == ENABLED
     class SurfaceTracking {
@@ -168,11 +170,17 @@ private:
         // reset controller, target_rangefinder_cm = next healthy rangefinder reading
         void reset();
 
+        // is the target set?
+        bool has_target_rangefinder() const WARN_IF_UNUSED { return !reset_target; }
+
         // get target rangefinder
-        float get_target_rangefinder_cm() const { return target_rangefinder_cm; }
+        float get_target_rangefinder_cm() const WARN_IF_UNUSED { return target_rangefinder_cm; }
 
         // set target rangefinder
         void set_target_rangefinder_cm(float new_target_cm);
+
+        // change the target by delta_cm if possible, otherwise reset the controller
+        void apply_delta_or_reset(float delta_cm);
 
         // track seafloor, call from main control loop
         void update_surface_offset();

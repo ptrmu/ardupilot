@@ -41,6 +41,8 @@ void Sub::read_rangefinder()
 #endif
 
     rangefinder_state.alt_cm = temp_alt;
+    rangefinder_state.min_cm = rangefinder.min_distance_cm_orient(ROTATION_PITCH_270);
+    rangefinder_state.max_cm = rangefinder.max_distance_cm_orient(ROTATION_PITCH_270);
 
     // filter rangefinder for use by AC_WPNav
     uint32_t now = AP_HAL::millis();

@@ -23,6 +23,11 @@
  * -- If the sub hits the surface or bottom, or the pilot takes control, we call surface_tracking.reset().
  */
 
+ModeRnghold::ModeRnghold() :
+        pilot_in_control(),
+        pilot_control_start_z_cm()
+{ }
+
 bool ModeRnghold::init(bool ignore_checks)
 {
     if (!ModeAlthold::init(ignore_checks)) {
@@ -48,6 +53,11 @@ void ModeRnghold::control_range() {
 
     // desired_climb_rate returns 0 when within the deadzone
     if (fabsf(target_climb_rate_cm_s) < 0.05f)  {
+        if (pilot_in_control) {
+            // pilot has released control, apply the delta to the target rangefinder
+            sub.surface_tracking.apply_delta_or_reset(inertial_nav.get_position_z_up_cm() - pilot_control_start_z_cm);
+            pilot_in_control = false;
+        }
         if (sub.ap.at_surface) {
             // set target depth to 5 cm below SURFACE_DEPTH
             position_control->set_pos_target_z_cm(MIN(position_control->get_pos_target_z_cm(), g.surface_depth - 5.0f));
@@ -60,9 +70,10 @@ void ModeRnghold::control_range() {
             // normal operation
             sub.surface_tracking.update_surface_offset();
         }
-    } else {
-        // pilot is in control
-        sub.surface_tracking.reset();
+    } else if (sub.surface_tracking.has_target_rangefinder() && !pilot_in_control) {
+        // pilot has taken control, note the current depth
+        pilot_control_start_z_cm = inertial_nav.get_position_z_up_cm();
+        pilot_in_control = true;
     }
 
     // set the target z from the climb rate and the z offset, and adjust the z vel and accel targets
