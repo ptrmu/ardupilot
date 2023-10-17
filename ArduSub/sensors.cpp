@@ -31,7 +31,13 @@ void Sub::read_rangefinder()
 #if RANGEFINDER_ENABLED == ENABLED
     rangefinder.update();
 
-    rangefinder_state.alt_healthy = ((rangefinder.status_orient(ROTATION_PITCH_270) == RangeFinder::Status::Good) && (rangefinder.range_valid_count_orient(ROTATION_PITCH_270) >= RANGEFINDER_HEALTH_MAX));
+    // Signal quality ranges from 0 (worst) to 100 (perfect), -1 means n/a
+    auto signal_quality_pct = rangefinder.signal_quality_pct(ROTATION_PITCH_270);
+
+    rangefinder_state.alt_healthy =
+            (rangefinder.status_orient(ROTATION_PITCH_270) == RangeFinder::Status::Good) &&
+            (rangefinder.range_valid_count_orient(ROTATION_PITCH_270) >= RANGEFINDER_HEALTH_MAX) &&
+            (signal_quality_pct == -1 || signal_quality_pct > 90);
 
     int16_t temp_alt = rangefinder.distance_cm_orient(ROTATION_PITCH_270);
 
