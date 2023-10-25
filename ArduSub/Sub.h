@@ -435,7 +435,6 @@ private:
     float get_roi_yaw();
     float get_look_ahead_yaw();
     float get_pilot_desired_climb_rate(float throttle_control);
-    float get_surface_tracking_climb_rate(int16_t target_rate, float current_alt_target, float dt);
     void rotate_body_frame_to_NE(float &x, float &y);
     void Log_Write_Control_Tuning();
     void Log_Write_Attitude();
