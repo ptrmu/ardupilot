@@ -171,7 +171,7 @@ private:
         void reset();
 
         // is the target set?
-        bool has_target_rangefinder() const WARN_IF_UNUSED { return !reset_target; }
+        bool has_target_rangefinder() const WARN_IF_UNUSED { return target_rangefinder_cm > 0; }
 
         // get target rangefinder
         float get_target_rangefinder_cm() const WARN_IF_UNUSED { return target_rangefinder_cm; }
@@ -180,7 +180,7 @@ private:
         void set_target_rangefinder_cm(float new_target_cm);
 
         // change the target by delta_cm if possible, otherwise reset the controller
-        void apply_delta_or_reset(float delta_cm);
+        void apply_delta_cm_or_reset(float delta_cm);
 
         // track seafloor, call from main control loop
         void update_surface_offset();
@@ -191,8 +191,7 @@ private:
 
     private:
         bool enabled = false;                 // true if pilot enabled surface tracking
-        bool reset_target = false;            // true if target should be reset
-        float target_rangefinder_cm = 0;      // target distance to seafloor
+        float target_rangefinder_cm = -1;     // target distance to seafloor
     } surface_tracking;
 #endif
 

@@ -44,27 +44,31 @@ void Sub::SurfaceTracking::enable(bool _enabled)
 
 void Sub::SurfaceTracking::reset()
 {
-    reset_target = true;
+    target_rangefinder_cm = -1;
 }
 
 void Sub::SurfaceTracking::set_target_rangefinder_cm(float new_target_cm)
 {
-    target_rangefinder_cm = new_target_cm;
-    sub.pos_control.set_pos_offset_z_cm(0);
-    sub.pos_control.set_pos_offset_target_z_cm(0);
-    sub.gcs().send_text(MAV_SEVERITY_INFO, "rangefinder target is %g m", target_rangefinder_cm * 0.01f);
-    reset_target = false;
+    // do not set a target if the rangefinder is unhealthy
+    if (sub.rangefinder_alt_ok()) {
+        target_rangefinder_cm = new_target_cm;
+        sub.pos_control.set_pos_offset_z_cm(0);
+        sub.pos_control.set_pos_offset_target_z_cm(0);
+        sub.gcs().send_text(MAV_SEVERITY_INFO, "rangefinder target is %g m", target_rangefinder_cm * 0.01f);
+    } else {
+        sub.gcs().send_text(MAV_SEVERITY_INFO, "rangefinder not ok, rangefinder target not set");
+    }
 }
 
-void Sub::SurfaceTracking::apply_delta_or_reset(float delta_cm)
+void Sub::SurfaceTracking::apply_delta_cm_or_reset(float delta_cm)
 {
     auto new_target_cm = target_rangefinder_cm + delta_cm;
     if (new_target_cm < (float)sub.rangefinder_state.min_cm) {
         sub.gcs().send_text(MAV_SEVERITY_INFO, "rangefinder target below minimum, holding depth");
-        reset_target = true;
+        reset();
     } else if (new_target_cm > (float)sub.rangefinder_state.max_cm) {
         sub.gcs().send_text(MAV_SEVERITY_INFO, "rangefinder target above maximum, holding depth");
-        reset_target = true;
+        reset();
     } else {
         sub.gcs().send_text(MAV_SEVERITY_INFO, "delta applied %g m", delta_cm * 0.01f);
         set_target_rangefinder_cm(new_target_cm);
@@ -76,7 +80,7 @@ void Sub::SurfaceTracking::update_surface_offset()
     if (enabled) {
         if (sub.rangefinder_alt_ok()) {
             // handle first reading or controller reset
-            if (reset_target) {
+            if (!has_target_rangefinder()) {
                 set_target_rangefinder_cm(sub.rangefinder_state.alt_cm_filt.get());
             }
 

@@ -55,7 +55,7 @@ void ModeRnghold::control_range() {
     if (fabsf(target_climb_rate_cm_s) < 0.05f)  {
         if (pilot_in_control) {
             // pilot has released control, apply the delta to the target rangefinder
-            sub.surface_tracking.apply_delta_or_reset(inertial_nav.get_position_z_up_cm() - pilot_control_start_z_cm);
+            sub.surface_tracking.apply_delta_cm_or_reset(inertial_nav.get_position_z_up_cm() - pilot_control_start_z_cm);
             pilot_in_control = false;
         }
         if (sub.ap.at_surface) {
