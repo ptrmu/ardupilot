@@ -500,7 +500,6 @@ private:
     void read_barometer(void);
     void init_rangefinder(void);
     void read_rangefinder(void);
-    bool rangefinder_alt_ok(void) const;
     void terrain_update();
     void terrain_logging();
     void init_ardupilot() override;
@@ -624,6 +623,7 @@ private:
 
 public:
     void mainloop_failsafe_check();
+    bool rangefinder_alt_ok() const WARN_IF_UNUSED;
 
     static Sub *_singleton;
 
@@ -637,6 +637,13 @@ public:
 
     // For Lua scripting, so index is 1..4, not 0..3
     uint8_t get_and_clear_button_count(uint8_t index);
+
+#if RANGEFINDER_ENABLED == ENABLED
+    bool has_target_rangefinder() const WARN_IF_UNUSED { return surface_tracking.has_target_rangefinder(); }
+    float get_target_rangefinder_cm() const WARN_IF_UNUSED { return surface_tracking.get_target_rangefinder_cm(); }
+    void set_target_rangefinder_cm(float new_target_cm) { surface_tracking.set_target_rangefinder_cm(new_target_cm); }
+    void apply_delta_cm_or_reset(float delta_cm) { surface_tracking.apply_delta_cm_or_reset(delta_cm); }
+#endif // RANGEFINDER_ENABLED
 #endif // AP_SCRIPTING_ENABLED
 };
 
