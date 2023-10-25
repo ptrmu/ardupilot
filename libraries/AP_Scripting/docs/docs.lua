@@ -1556,6 +1556,26 @@ function sub:is_button_pressed(index) end
 ---@return integer
 function sub:get_and_clear_button_count(index) end
 
+-- Return true if rangefinder is healthy, includes a check for good signal quality
+---@return boolean
+function sub:rangefinder_alt_ok() end
+
+-- RNG_HOLD mode: return true if there is a rangefinder target
+---@return boolean
+function sub:has_target_rangefinder() end
+
+-- RNG_HOLD mode: return the rangefinder target in cm
+---@return float
+function sub:get_target_rangefinder_cm() end
+
+-- RNG_HOLD mode: set the rangefinder target in cm, if possible
+---@param new_target_cm float
+function sub:set_target_rangefinder_cm(new_target_cm) end
+
+-- RNG_HOLD mode: adjust the rangefinder target by delta if possible, or reset
+---@param delta_cm float
+function sub:apply_delta_cm_or_reset(delta_cm) end
+
 
 -- desc
 ---@class quadplane
