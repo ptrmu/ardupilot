@@ -1,19 +1,21 @@
 '''
 Dive ArduSub in SITL
 
+Depth of water is 50m, the ground is flat
+Parameters are in-code defaults plus default_params/sub.parm
+
 AP_FLAKE8_CLEAN
 '''
 
 from __future__ import print_function
+
 import os
 import sys
 import time
 
 from pymavlink import mavutil
 
-from common import AutoTest
-from common import NotAchievedException
-from common import AutoTestTimeoutException
+from common import AutoTest, NotAchievedException, AutoTestTimeoutException, PreconditionFailedException
 
 if sys.version_info[0] < 3:
     ConnectionResetError = AutoTestTimeoutException
@@ -184,7 +186,13 @@ class AutoTestSub(AutoTest):
     def RangeHold(self):
         """Test RNG_HOLD mode"""
 
+        if self.get_parameter('RNGFND1_MIN_CM') != 20.0:
+            raise PreconditionFailedException("RNGFND1_MIN_CM is not %g" % 20.0)
+        if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
+            raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
+
         # Something closer to Bar30 noise
+        self.context_push()
         self.set_parameter("SIM_BARO_RND", 0.01)
 
         self.wait_ready_to_arm()
@@ -204,13 +212,13 @@ class AutoTestSub(AutoTest):
         self.delay_sim_time(1)
         self.context_collect('STATUSTEXT')
         self.change_mode(21)
-        self.wait_statustext('holding depth, waiting for a rangefinder reading', check_context=True)
+        self.wait_statustext('waiting for a rangefinder reading', check_context=True)
         self.context_clear_collection("STATUSTEXT")
         self.watch_altitude_maintained()
 
         # Move into range, should set a target and maintain it
         self.set_rc(Joystick.Throttle, 1300)
-        self.wait_altitude(altitude_min=-36, altitude_max=-35, relative=False, timeout=60)
+        self.wait_altitude(altitude_min=-26, altitude_max=-25, relative=False, timeout=60)
         self.set_rc(Joystick.Throttle, 1500)
         self.delay_sim_time(3)
         self.wait_statustext('rangefinder target is', check_context=True)
@@ -219,7 +227,7 @@ class AutoTestSub(AutoTest):
 
         # Move a few meters, should apply a delta and maintain the new target
         self.set_rc(Joystick.Throttle, 1300)
-        self.wait_altitude(altitude_min=-41, altitude_max=-40, relative=False, timeout=60)
+        self.wait_altitude(altitude_min=-31, altitude_max=-30, relative=False, timeout=60)
         self.set_rc(Joystick.Throttle, 1500)
         self.delay_sim_time(3)
         self.wait_statustext('delta applied', check_context=True)
@@ -228,6 +236,7 @@ class AutoTestSub(AutoTest):
         self.watch_distance_maintained()
 
         self.disarm_vehicle()
+        self.context_pop()
 
     def ModeChanges(self, delta=0.2):
         """Check if alternating between ALTHOLD, STABILIZE, POSHOLD and RNG_HOLD (mode 21) affects altitude"""

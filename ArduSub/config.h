@@ -70,6 +70,10 @@
 # define RNGFND_D_DEFAULT 0.0f     // default D term for rangefinder_pid
 #endif
 
+#ifndef SURFTRAK_DEPTH_DEFAULT
+# define SURFTRAK_DEPTH_DEFAULT -50.0f  // surface tracking will keep the sub below -50cm if possible
+#endif
+
 #ifndef THR_SURFACE_TRACKING_VELZ_MAX
 # define THR_SURFACE_TRACKING_VELZ_MAX 150 // max vertical speed change while surface tracking with rangefinder
 #endif

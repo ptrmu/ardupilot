@@ -587,6 +587,13 @@ const AP_Param::Info Sub::var_info[] = {
     // @Group: RNGFND_PID_
     // @Path: ../libraries/AC_PID/AC_PID.cpp
     GOBJECTN(surface_tracking.pid_rangefinder, pid_rangefinder, "RNGFND_PID_", AC_PID),
+
+    // @Param: SURFTRAK_DEPTH
+    // @DisplayName: Surface tracking minimum depth
+    // @Description: Minimum depth to engage surface tracking (RNG_HOLD mode)
+    // @Units: cm
+    // @User: Standard
+    GSCALAR(surftrak_depth, "SURFTRAK_DEPTH", SURFTRAK_DEPTH_DEFAULT),
 #endif
 
 #if AP_TERRAIN_AVAILABLE

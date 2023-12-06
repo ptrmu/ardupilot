@@ -219,6 +219,8 @@ public:
         k_param_lights_steps,
         k_param_pilot_speed_dn,
 
+        k_param_surftrak_depth = 240,
+
         k_param_vehicle = 257, // vehicle common block of parameters
     };
 
@@ -233,6 +235,7 @@ public:
 
 #if RANGEFINDER_ENABLED == ENABLED
     AP_Float        rangefinder_gain;
+    AP_Float        surftrak_depth;
 #endif
 
     AP_Int8         failsafe_leak;              // leak detection failsafe behavior
