@@ -88,7 +88,7 @@ void ModeAlthold::run_pre()
             attitude_control->input_euler_angle_roll_pitch_euler_rate_yaw(target_roll, target_pitch, target_yaw_rate);
             sub.last_pilot_heading = ahrs.yaw_sensor; // update heading to hold
 
-        } else { // call attitude controller holding absolute absolute bearing
+        } else { // call attitude controller holding absolute bearing
             attitude_control->input_euler_angle_roll_pitch_yaw(target_roll, target_pitch, sub.last_pilot_heading, true);
         }
     }

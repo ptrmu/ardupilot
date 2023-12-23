@@ -186,8 +186,6 @@ class AutoTestSub(AutoTest):
     def RangeHold(self):
         """Test RNG_HOLD mode"""
 
-        if self.get_parameter('RNGFND1_MIN_CM') != 20.0:
-            raise PreconditionFailedException("RNGFND1_MIN_CM is not %g" % 20.0)
         if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
             raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
 
@@ -200,12 +198,7 @@ class AutoTestSub(AutoTest):
         self.change_mode('MANUAL')
 
         # Dive to -5m, outside of rangefinder range, will act like ALT_HOLD
-        msg = self.mav.recv_match(type='GLOBAL_POSITION_INT', blocking=True, timeout=5)
-        if msg is None:
-            raise NotAchievedException("Did not get GLOBAL_POSITION_INT")
-        pwm = 1300
-        if msg.relative_alt/1000.0 < -6.0:
-            pwm = 1700
+        pwm = 1300 if self.get_altitude(relative=True) > -6 else 1700
         self.set_rc(Joystick.Throttle, pwm)
         self.wait_altitude(altitude_min=-6, altitude_max=-5, relative=False, timeout=60)
         self.set_rc(Joystick.Throttle, 1500)
@@ -592,6 +585,27 @@ class AutoTestSub(AutoTest):
         self._MAV_CMD_CONDITION_YAW(self.run_cmd)
         self._MAV_CMD_CONDITION_YAW(self.run_cmd_int)
 
+    def TerrainMission(self):
+        """Mission using surface tracking"""
+
+        if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
+            raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
+
+        filename = "terrain_mission.txt"
+        self.progress("Executing mission %s" % filename)
+        self.load_mission(filename)
+        self.set_rc_default()
+        self.arm_vehicle()
+        self.change_mode('AUTO')
+        self.wait_waypoint(1, 4, max_dist=5)
+        self.delay_sim_time(3)
+
+        # Expect sub to hover at final altitude
+        self.assert_altitude(-36.0)
+
+        self.disarm_vehicle()
+        self.progress("Mission OK")
+
     def tests(self):
         '''return list of all tests'''
         ret = super(AutoTestSub, self).tests()
@@ -613,6 +627,7 @@ class AutoTestSub(AutoTest):
             self.MAV_CMD_MISSION_START,
             self.MAV_CMD_DO_CHANGE_SPEED,
             self.MAV_CMD_CONDITION_YAW,
+            self.TerrainMission,
         ])
 
         return ret
