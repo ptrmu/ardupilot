@@ -621,6 +621,27 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
         self._MAV_CMD_CONDITION_YAW(self.run_cmd)
         self._MAV_CMD_CONDITION_YAW(self.run_cmd_int)
 
+    def TerrainMission(self):
+        """Mission using surface tracking"""
+
+        if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
+            raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
+
+        filename = "terrain_mission.txt"
+        self.progress("Executing mission %s" % filename)
+        self.load_mission(filename)
+        self.set_rc_default()
+        self.arm_vehicle()
+        self.change_mode('AUTO')
+        self.wait_waypoint(1, 4, max_dist=5)
+        self.delay_sim_time(3)
+
+        # Expect sub to hover at final altitude
+        self.assert_altitude(-36.0)
+
+        self.disarm_vehicle()
+        self.progress("Mission OK")
+
     def tests(self):
         '''return list of all tests'''
         ret = super(AutoTestSub, self).tests()
@@ -644,6 +665,7 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
             self.MAV_CMD_MISSION_START,
             self.MAV_CMD_DO_CHANGE_SPEED,
             self.MAV_CMD_CONDITION_YAW,
+            self.TerrainMission,
         ])
 
         return ret

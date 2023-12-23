@@ -133,7 +133,7 @@ enum LoggingParameters {
 #define FS_CRASH_WARN_ONLY 1
 #define FS_CRASH_DISARM    2
 
-// Terrain failsafe actions for AUTO mode
+// Terrain failsafe actions for AUTO mode (FS_TERRAIN_ENAB parameter)
 #define FS_TERRAIN_DISARM       0
 #define FS_TERRAIN_HOLD         1
 #define FS_TERRAIN_SURFACE      2
