@@ -158,16 +158,41 @@ private:
         int16_t min_cm;     // min rangefinder distance (in cm)
         int16_t max_cm;     // max rangefinder distance (in cm)
         uint32_t last_healthy_ms;
+        float inertial_alt_cm; // inertial alt at time of last rangefinder sample
+        float rangefinder_terrain_offset_cm;  // terrain height above EKF origin
         LowPassFilterFloat alt_cm_filt; // altitude filter
-    } rangefinder_state = { false, false, 0, 0, 0, 0 };
+    } rangefinder_state = { false, false, 0, 0, 0, 0, 0, 0 };
 
 #if RANGEFINDER_ENABLED == ENABLED
+    // Estimate the ground position using a Kalman filter
+    class TerrainKF {
+    public:
+        TerrainKF(float _measurement_nse, float _process_nse);
+        void reset(float z);
+        void predict(float dt);
+        void update(float z);
+        Vector3f project(float dt) const WARN_IF_UNUSED;
+        Vector3f const &get_x() const WARN_IF_UNUSED { return x; }
+        Matrix3f const &get_P() const WARN_IF_UNUSED { return P; }
+        float get_terrain_cm() const WARN_IF_UNUSED { return x.x; }
+
+    private:
+        float process_nse;
+        float measurement_nse;
+        Vector3f x;
+        Matrix3f P;
+        Vector3f H;
+        float R;
+    };
+
+    TerrainKF *terrain_kf = nullptr;
+
     class SurfaceTracking {
     public:
         // pilot can enable or disable tracking
         void enable(bool _enabled);
 
-        // reset controller, target_rangefinder_cm = next healthy rangefinder reading
+        // reset controller
         void reset();
 
         // is the target set?
@@ -184,10 +209,6 @@ private:
 
         // track seafloor, call from main control loop
         void update_surface_offset();
-
-        // rangefinder PID, must be public so that AP_Param can see it
-        AC_PID pid_rangefinder{RNGFND_P_DEFAULT, RNGFND_I_DEFAULT, RNGFND_D_DEFAULT,
-                               0.0, 0.0, 5.0, 5.0, 5.0};
 
     private:
         bool enabled = false;                 // true if pilot enabled surface tracking
@@ -556,9 +577,6 @@ private:
     void translate_wpnav_rp(float &lateral_out, float &forward_out);
     void translate_circle_nav_rp(float &lateral_out, float &forward_out);
     void translate_pos_control_rp(float &lateral_out, float &forward_out);
-
-    bool surface_init(void);
-    void surface_run();
 
     void stats_update();
 
