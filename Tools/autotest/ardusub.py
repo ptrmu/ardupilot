@@ -624,23 +624,70 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
     def TerrainMission(self):
         """Mission using surface tracking"""
 
-        if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
-            raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
+        # if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
+        #     raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
+        #
+        # filename = "terrain_mission.txt"
+        # self.progress("Executing mission %s" % filename)
+        # self.load_mission(filename)
+        # self.set_rc_default()
+        # self.arm_vehicle()
+        # self.change_mode('AUTO')
+        # self.wait_waypoint(1, 4, max_dist=5)
+        # self.delay_sim_time(3)
+        #
+        # # Expect sub to hover at final altitude
+        # self.assert_altitude(-36.0)
+        #
+        # self.disarm_vehicle()
+        # self.progress("Mission OK")
 
-        filename = "terrain_mission.txt"
-        self.progress("Executing mission %s" % filename)
-        self.load_mission(filename)
-        self.set_rc_default()
-        self.arm_vehicle()
-        self.change_mode('AUTO')
-        self.wait_waypoint(1, 4, max_dist=5)
-        self.delay_sim_time(3)
+        self.context_push()
+        self.context_collect('STATUSTEXT')
 
-        # Expect sub to hover at final altitude
-        self.assert_altitude(-36.0)
+        ex = None
+        try:
+            self.set_parameters({
+                "SCR_ENABLE": 1,
+                "RNGFND1_TYPE": 36,
+                "RNGFND1_ORIENT": 25,
+                "RNGFND1_MIN_CM": 10,
+                "RNGFND1_MAX_CM": 5000,
+            })
 
-        self.disarm_vehicle()
-        self.progress("Mission OK")
+            self.install_example_script_context("sub_test_above_terrain_frame.lua")
+
+            # These string must match those sent by the lua test script.
+            complete_str = "#complete#"
+            failure_str = "!!failure!!"
+
+            self.reboot_sitl()
+
+            filename = "terrain_mission.txt"
+            self.progress("Executing mission %s" % filename)
+            self.load_mission(filename)
+            self.set_rc_default()
+
+            self.arm_vehicle()
+            self.change_mode('AUTO')
+            self.wait_waypoint(1, 4, max_dist=5)
+
+            self.wait_statustext(complete_str, timeout=20, check_context=True)
+            found_failure = self.statustext_in_collections(failure_str)
+
+            self.disarm_vehicle()
+
+            if found_failure is not None:
+                raise NotAchievedException("RngfndQuality test failed: " + found_failure.text)
+
+        except Exception as e:
+            self.print_exception_caught(e)
+            ex = e
+
+        self.context_pop()
+
+        if ex:
+            raise ex
 
     def tests(self):
         '''return list of all tests'''
