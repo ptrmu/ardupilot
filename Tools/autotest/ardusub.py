@@ -205,20 +205,30 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
         if ex:
             raise ex
 
-    def watch_distance_maintained(self, delta=0.3, timeout=5.0):
+    def watch_distance_maintained(self, delta=0.3, timeout=5.0, final_waypoint=0):
         """Watch and wait for the rangefinder reading to be maintained"""
         tstart = self.get_sim_time_cached()
         previous_distance = self.mav.recv_match(type='RANGEFINDER', blocking=True).distance
         self.progress('Distance to be watched: %.2f' % previous_distance)
         while True:
             m = self.mav.recv_match(type='RANGEFINDER', blocking=True)
-            if self.get_sim_time_cached() - tstart > timeout:
-                self.progress('Distance hold done: %f' % previous_distance)
-                return
+            timed_out = self.get_sim_time_cached() - tstart > timeout
+            # If final_waypoint>0 then timeout is failure, otherwise success
+            if timed_out and final_waypoint > 0:
+                raise NotAchievedException(
+                    "Mission not complete: want waypoint %i, only made it to waypoint %i" %
+                    (final_waypoint, self.mav.waypoint_current()))
+            if timed_out:
+                    self.progress('Distance hold done: %f' % previous_distance)
+                    return
             if abs(m.distance - previous_distance) > delta:
                 raise NotAchievedException(
                     "Distance not maintained: want %.2f (+/- %.2f) got=%.2f" %
                     (previous_distance, delta, m.distance))
+            if final_waypoint > 0:
+                if self.mav.waypoint_current() >= final_waypoint:
+                    self.progress('Distance hold during mission done: %f' % previous_distance)
+                    return
 
     def Surftrak(self):
         """Test SURFTRAK mode"""
@@ -262,6 +272,109 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
         self.delay_sim_time(4)
         self.wait_statustext('rangefinder target is', check_context=True)
         self.watch_distance_maintained()
+
+        self.disarm_vehicle()
+        self.context_pop()
+
+    def TerrainSurftrak(self):
+        """Move at a constant height above synthetic sea floor"""
+
+        self.context_push()
+        self.set_parameters({
+            "SCR_ENABLE": 1,
+            "RNGFND1_TYPE": 36,
+            "RNGFND1_ORIENT": 25,
+            "RNGFND1_MIN_CM": 10,
+            "RNGFND1_MAX_CM": 3000,
+            "SCR_USER1": 1,             # Configuration bundle 1
+            "SCR_USER2": 50,            # Depth in meters
+            "SCR_USER3": 1,             # Output log records
+        })
+
+        self.install_example_script_context("sub_test_synthetic_seafloor.lua")
+
+        # Reboot to enable scripting.
+        self.reboot_sitl()
+        self.set_rc_default()
+        self.wait_ready_to_arm()
+
+        self.arm_vehicle()
+        self.change_mode('MANUAL')
+
+        # Dive to 15m off the bottom in preparation for the test
+        pwm = 1300 if self.get_altitude(relative=True) > -36 else 1700
+        self.set_rc(Joystick.Throttle, pwm)
+        # self.wait_altitude(altitude_min=-36, altitude_max=-35, relative=False, timeout=60)
+        self.wait_rangefinder_distance(dist_min=14.5, dist_max=15.5, timeout=60)
+        self.set_rc(Joystick.Throttle, 1500)
+        self.delay_sim_time(1)
+
+        # Turn on surftrak and move around
+        self.change_mode(21)
+
+        # Go south over the ridge.
+        self.reach_heading_manual(0)
+        self.set_rc(Joystick.Forward, 1300)
+        self.watch_distance_maintained(delta=10, timeout=60)
+        self.set_rc(Joystick.Forward, 1500)
+
+        # Shift west a bit
+        self.reach_heading_manual(90)
+        self.set_rc(Joystick.Forward, 1300)
+        self.watch_distance_maintained()
+        self.set_rc(Joystick.Forward, 1500)
+
+        # Go north back over the ridge
+        self.reach_heading_manual(180)
+        self.set_rc(Joystick.Forward, 1300)
+        self.watch_distance_maintained(delta=10, timeout=60)
+        self.set_rc(Joystick.Forward, 1500)
+
+        self.disarm_vehicle()
+        self.context_pop()
+
+    def TerrainMission(self):
+        """Mission at a constant height above synthetic sea floor"""
+
+        self.context_push()
+        self.set_parameters({
+            "SCR_ENABLE": 1,
+            "RNGFND1_TYPE": 36,
+            "RNGFND1_ORIENT": 25,
+            "RNGFND1_MIN_CM": 10,
+            "RNGFND1_MAX_CM": 3000,
+            "SCR_USER1": 1,             # Configuration bundle 1
+            "SCR_USER2": 50,            # Depth in meters
+            "SCR_USER3": 1,             # Output log records
+        })
+
+        self.install_example_script_context("sub_test_synthetic_seafloor.lua")
+
+        # Reboot to enable scripting.
+        self.reboot_sitl()
+        self.set_rc_default()
+        self.wait_ready_to_arm()
+
+        # The synthetic seafloor has an east-west ridge south of the sub.
+        # The mission contained in terrain_mission.txt instructs the sub
+        # to remain at 15m above the seafloor and travel south over the
+        # ridge. Then the sub moves west and travels north over the ridge.
+        filename = "terrain_mission.txt"
+        self.load_mission(filename)
+
+        self.arm_vehicle()
+        self.change_mode('MANUAL')
+
+        # Dive to 15m off the bottom in preparation for the mission
+        pwm = 1300 if self.get_altitude(relative=True) > -36 else 1700
+        self.set_rc(Joystick.Throttle, pwm)
+        # self.wait_altitude(altitude_min=-36, altitude_max=-35, relative=False, timeout=60)
+        self.wait_rangefinder_distance(dist_min=14.5, dist_max=15.5, timeout=60)
+        self.set_rc(Joystick.Throttle, 1500)
+        self.delay_sim_time(1)
+
+        self.change_mode('AUTO')
+        self.watch_distance_maintained(delta=1.5, timeout=500.0, final_waypoint=4)
 
         self.disarm_vehicle()
         self.context_pop()
@@ -621,74 +734,6 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
         self._MAV_CMD_CONDITION_YAW(self.run_cmd)
         self._MAV_CMD_CONDITION_YAW(self.run_cmd_int)
 
-    def TerrainMission(self):
-        """Mission using surface tracking"""
-
-        # if self.get_parameter('RNGFND1_MAX_CM') != 3000.0:
-        #     raise PreconditionFailedException("RNGFND1_MAX_CM is not %g" % 3000.0)
-        #
-        # filename = "terrain_mission.txt"
-        # self.progress("Executing mission %s" % filename)
-        # self.load_mission(filename)
-        # self.set_rc_default()
-        # self.arm_vehicle()
-        # self.change_mode('AUTO')
-        # self.wait_waypoint(1, 4, max_dist=5)
-        # self.delay_sim_time(3)
-        #
-        # # Expect sub to hover at final altitude
-        # self.assert_altitude(-36.0)
-        #
-        # self.disarm_vehicle()
-        # self.progress("Mission OK")
-
-        self.context_push()
-        self.context_collect('STATUSTEXT')
-
-        ex = None
-        try:
-            self.set_parameters({
-                "SCR_ENABLE": 1,
-                "RNGFND1_TYPE": 36,
-                "RNGFND1_ORIENT": 25,
-                "RNGFND1_MIN_CM": 10,
-                "RNGFND1_MAX_CM": 5000,
-            })
-
-            self.install_example_script_context("sub_test_above_terrain_frame.lua")
-
-            # These string must match those sent by the lua test script.
-            complete_str = "#complete#"
-            failure_str = "!!failure!!"
-
-            self.reboot_sitl()
-
-            filename = "terrain_mission.txt"
-            self.progress("Executing mission %s" % filename)
-            self.load_mission(filename)
-            self.set_rc_default()
-
-            self.arm_vehicle()
-            self.change_mode('AUTO')
-            self.wait_waypoint(1, 4, max_dist=5)
-
-            self.wait_statustext(complete_str, timeout=20, check_context=True)
-            found_failure = self.statustext_in_collections(failure_str)
-
-            self.disarm_vehicle()
-
-            if found_failure is not None:
-                raise NotAchievedException("RngfndQuality test failed: " + found_failure.text)
-
-        except Exception as e:
-            self.print_exception_caught(e)
-            ex = e
-
-        self.context_pop()
-
-        if ex:
-            raise ex
-
     def tests(self):
         '''return list of all tests'''
         ret = super(AutoTestSub, self).tests()
@@ -697,6 +742,8 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
             self.DiveManual,
             self.AltitudeHold,
             self.Surftrak,
+            self.TerrainSurftrak,
+            self.TerrainMission,
             self.RngfndQuality,
             self.PositionHold,
             self.ModeChanges,
@@ -712,7 +759,6 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
             self.MAV_CMD_MISSION_START,
             self.MAV_CMD_DO_CHANGE_SPEED,
             self.MAV_CMD_CONDITION_YAW,
-            self.TerrainMission,
         ])
 
         return ret

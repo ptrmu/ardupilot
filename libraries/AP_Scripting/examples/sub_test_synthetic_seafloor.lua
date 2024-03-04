@@ -1,17 +1,28 @@
 
+-- sub_test_synthetic_seafloor.lua
+-- A simulated range finder driver returns distances based on the
+-- vehicle location over a simulated seafloor topography. Used for
+-- testing bottom tracking modes in ArduSub.
+--
+-- The synthetic seafloor topography is defined as a 1-D height profile (h=f(x)) that is extruded 
+-- in the perpendicular direction to define a 2-D height function (h=f(x,y)).
+--
+-- The following Parameters can be set by the test script to control how this driver behaves
+--  SCR_USER1 is an index into a table of configuration bundles.
+--  SCR_USER2 is the average bottom depth in meters
+--  SCR_USER3 is a bit field that controls driver logging.
+--
+
 
 local UPDATE_PERIOD_MS = 50
 
--- These strings must match the strings used by the test driver for interpreting the output from this test.
-local TEST_ID_STR = "STTF"
-local COMPLETE_STR = "#complete#"
-local SUCCESS_STR = "!!success!!"
-local FAILURE_STR = "!!failure!!"
+local TEST_ID_STR = "STSS"
+local SCRIPT_NAME = "sub_test_synthetic_seafloor.lua"
 
--- Copied from libraries/AP_Math/rotation.h enum Rotation {}.
-local RNGFND_ORIENTATION_DOWN = 25
-local RNGFND_ORIENTATION_FORWARD = 0
--- Copied from libraries/AP_RangeFinder/AP_RanggeFinder.h enum RangeFinder::Type {}.
+local enable_logger_write = true
+local enable_gcs_send_data = false
+
+-- Copied from libraries/AP_RangeFinder/AP_RangeFinder.h enum RangeFinder::Type {}.
 local RNGFND_TYPE_LUA = 36.0
 -- Copied from libraries/AP_RangeFinder/AP_RangeFinder.h enum RangeFinder::Status {}.
 local RNGFND_STATUS_NOT_CONNECTED = 0
@@ -85,8 +96,8 @@ end
 
 local send = gcs_send_funcfactory(TEST_ID_STR, 1.0, 3)
 
-local function failed(error)
-    send(string.format("%s %s %s", COMPLETE_STR, FAILURE_STR, error))
+local function fatal_error(error)
+    send(string.format("FATAL ERROR '%s': %s", SCRIPT_NAME, error))
 end
 
 -------------------------------------------------------------------------------
@@ -187,7 +198,7 @@ local function profile_factory(vertices)
     return sections
 end
 
-do
+do  -- Some code to test functionality and illustrate usage
     local section = section_factory(0, 1, 1, 1)
 
     local function test(x, z, psi, s_expected, r_expected)
@@ -238,7 +249,7 @@ do
     test(1, 0, -math.pi/4,  0, math.sqrt(2))
 end
 
-do
+do  -- Some code to test functionality and illustrate usage
     local profile = profile_factory({{0, 1}, {1, 2}})
 
     local function test(x, z, psi, d_expected)
@@ -281,17 +292,166 @@ do
     test(20, 0, -math.pi/4, 2*math.sqrt(2))
 end
 
+
 -------------------------------------------------------------------------------
 
--- Sea Floor Model
+-- NoiseModel
 
-local function sea_floor_model_factory(model_bearing_N_rad, model_depth_m, vertices)
+---@class NoiseModelConfig
+---@field mean number                   -- Mean of the noise distribution (mean == 0 and std_dev == 0 => no gaussian noise)
+---@field std_dev number                -- Standard deviation of the noise distribution
+---@field outlier_rate_ops number       -- Rate of outliers outliers/second (0 => no outliers)
+---@field outlier_mean number           -- Mean of outliers distribution
+---@field outlier_std_dev number        -- Stardard deviation of outliers distribution
+---@field delay_s number                -- Delay between measurement request and measurement return (0 => no delay)
+---@field callback_interval_ms number   -- Delay between calls of the add noise function
+
+-- This factory creates a function that will take a measurement m and addd noise to it
+---@param config NoiseModelConfig
+local function add_noise_funcfactory(config)
+
+    local function identity_funcfactory(pre_func)
+        if pre_func then
+            return pre_func
+        end
+        return function(m) return m end
+    end
+
+
+    local function noise_funcfactory(mean, std_dev, rate_ops, callback_interval_ms, pre_func)
+
+        -- Use the Box-Muller algorithm to generate normally distributed error that is added to the sample.
+        local function box_muller_func(m)
+            return m + mean + std_dev * math.sqrt(-2 * math.log(math.random())) * math.cos(2 * math.pi * math.random())
+        end
+
+        local function gaussian_noise_funcfactory()
+            if std_dev == 0.0 and pre_func then
+                return function(m) return pre_func(m) + mean end
+            end
+
+            if std_dev == 0.0 then
+                return function(m) return m + mean end
+            end
+
+            if pre_func then
+                return function(m) return box_muller_func(pre_func(m)) end
+            end
+
+            return box_muller_func
+        end
+
+        -- Just simple normally distributed noise
+        if rate_ops == 0.0 then
+            return gaussian_noise_funcfactory()
+        end
+
+        -- Use poisson distribution to generate outliers
+
+        -- Create a function to generate outliers
+        local outlier_func = gaussian_noise_funcfactory()
+
+        -- Rate of outlier events in a callback interval
+        local rate_opi = rate_ops * callback_interval_ms / 1000.0
+
+        -- Poisson probability of zero events in an interval - Poisson formula is just exp in this case
+        local poisson_prob_zero = math.exp(-rate_opi)
+
+        return function(m)
+            -- Poisson probability of 1 or more events in this interval is 1-P(0)
+            if math.random() > poisson_prob_zero then
+                return outlier_func(m)  -- NOTE: pre_func is invoked in outlier_func.
+            end
+            if pre_func then
+                return pre_func(m)
+            end
+            return m
+        end
+    end
+
+
+    local function delay_funcfactory(delay_s, callback_interval_ms, pre_func)
+
+        if delay_s == 0.0 or callback_interval_ms == 0 then
+            return identity_funcfactory(pre_func)
+        end
+
+        local delay_line = {}
+        local delay_count = math.ceil(delay_s / callback_interval_ms * 1000.0)
+        if delay_count <= 0 then
+            return identity_funcfactory(pre_func)
+        end
+
+        local next_idx = -1
+        local function delay_func(m)
+            if pre_func then
+                m = pre_func(m)
+            end
+
+            if next_idx < 1 then
+                for i = 1, delay_count do
+                    delay_line[i] = m
+                end
+                next_idx = 1
+            end
+
+            local m_delay = delay_line[next_idx]
+            delay_line[next_idx] = m
+            next_idx = next_idx + 1
+            if next_idx > #delay_line then
+                next_idx = 1
+            end
+            return m_delay
+        end
+
+        return delay_func
+    end
+
+    local func
+
+    -- Check for adding gaussian noise to measrement
+    if config.mean ~= 0.0 or config.std_dev ~= 0.0 then
+        func = noise_funcfactory(config.mean, config.std_dev, 0.0, 0.0)
+    end
+
+    -- Check for adding an outlier measurement
+    if config.outlier_rate_ops ~= 0 then
+        func = noise_funcfactory(config.outlier_mean, config.outlier_std_dev,
+            config.outlier_rate_ops, config.callback_interval_ms, func)
+    end
+
+    -- Check for delaying the measurement
+    if config.delay_s ~= 0.0 then
+        func = delay_funcfactory(config.delay_s, config.callback_interval_ms, func)
+    end
+
+    if func == nil then
+        func = identity_funcfactory()
+    end
+
+    return func
+end
+
+-------------------------------------------------------------------------------
+
+-- Range Model
+
+---@class RangeModel
+---@field get_range function(RangeModel, location_ud): number
+---@field sub_z_m number
+---@field bottom_z_m number
+---@field range_m number
+---@field set_origin function(RangeModel, location_ud)
+---@field is_origin_valid function(RangeModel)
+
+---@return RangeModel
+local function range_model_factory(model_bearing_N_rad, model_depth_m, vertices)
 
     ---@class Location_ud
     local origin_loc
 
     local profile = profile_factory(vertices)
-
+  
     ---@param sub_loc Location_ud
     local function get_range(self, sub_loc)
 
@@ -314,8 +474,6 @@ local function sea_floor_model_factory(model_bearing_N_rad, model_depth_m, verti
         local sub_bearing_M_rad = sub_bearing_N_rad - model_bearing_N_rad
         local sub_northly_M_m = math.cos(sub_bearing_M_rad) * sub_distance_M_m
 
-        send("SFM", string.format("sub_z %.2f, bearing %.2f, range %.2f", self.sub_z_m, sub_bearing_N_rad, sub_distance_M_m))
-
         -- profile:intersect has an origin at zero so we must calculate how far 
         -- the sub is above that origin. And also calculate the depth of the
         -- sea floor below the sub's location.
@@ -335,17 +493,13 @@ local function sea_floor_model_factory(model_bearing_N_rad, model_depth_m, verti
     end
 
     return {
+        get_range = get_range,
         sub_z_m = 0,
         bottom_z_m = model_depth_m,
         range_m = model_depth_m,
         set_origin = function(self, origin) origin_loc = origin end,
-        valid_origin = function(self) return origin_loc ~= nil end,
-        get_range = get_range,
+        is_origin_valid = function(self) return origin_loc ~= nil end,
     }
-end
-
-local function get_sea_floor_model()
-    return sea_floor_model_factory(math.pi, 45, {{5, 0}, {25, 10}, {50, 0}})
 end
 
 -------------------------------------------------------------------------------
@@ -355,33 +509,131 @@ end
 -- The range finder backend is initialized in the update_init function.
 ---@type AP_RangeFinder_Backend_ud
 local rngfnd_backend
-local sea_floor_model
+
+-- The range_model and add_noise_func are initialized when vehicle is armed
+---@type RangeModel
+local range_model
+
+local measurement_noise_func
+local signal_quality_noise_func
+
+
 
 local function range_finder_driver(sub_loc)
-
     local rf_state = RangeFinder_State()
+
     -- The full state udata must be initialized.
     rf_state:last_reading(millis():toint())
     rf_state:voltage(0)
 
-    local range_m = nil
-    if sub_loc then
-        range_m = sea_floor_model:get_range(sub_loc)
-    end
-
-    if not range_m then
+    -- If no location, then return no data
+    if not sub_loc then
         rf_state:status(RNGFND_STATUS_NO_DATA)
         rf_state:range_valid_count(0)
         rf_state:distance(0)
         rf_state:signal_quality(SIGNAL_QUALITY_MIN)
-    else
-        rf_state:status(RNGFND_STATUS_GOOD)
-        rf_state:range_valid_count(10)
-        rf_state:distance(range_m)
-        rf_state:signal_quality(SIGNAL_QUALITY_MAX)
+        rngfnd_backend:handle_script_msg(rf_state) -- state as arg
+        return
     end
 
+    -- Generate a simulated range measurement
+    local true_range_m = range_model:get_range(sub_loc)
+    local range_m = measurement_noise_func(true_range_m)
+    local signal_quality = signal_quality_noise_func(SIGNAL_QUALITY_MAX)
+
+    -- Return this measurement to the range finder backend
+    rf_state:status(RNGFND_STATUS_GOOD)
+    rf_state:range_valid_count(10)
+    rf_state:distance(range_m)
+    rf_state:signal_quality(signal_quality)
     rngfnd_backend:handle_script_msg(rf_state) -- state as arg
+
+    -- Log this data
+    if enable_logger_write then
+        logger:write('RNFN', 'sub_z,bottom_z,true_range,range,quality', 'fffff', 'mmmmm', '-----',
+            range_model.sub_z_m, range_model.bottom_z_m, true_range_m, range_m, signal_quality)
+        -- This data can be viewed in mavexplorer with the following command:
+        -- graph RNFN.sub_z RNFN.bottom_z RNFN.true_range RNFN.range
+    end
+    if enable_gcs_send_data then
+        send("RNGFND", string.format("true range %.2f, range %.2f, sub_z %.2f, bottom_z %.2f",
+            true_range_m, range_m, range_model.sub_z_m, range_model.bottom_z_m))
+    end
+end
+
+-------------------------------------------------------------------------------
+
+local function initialize_model()
+
+    -- query SCR_USERx for parameters
+    -- SCR_USER1 is a code for which config bundle to use
+    local config_index = param:get('SCR_USER1')
+    if not config_index then
+        config_index = 1
+    end
+    -- SCR_USER2 is the bottom depth
+    local bottom_depth_m = param:get('SCR_USER2')
+    if not bottom_depth_m or bottom_depth_m < 1 then
+        bottom_depth_m = 50
+    end
+    -- SCR_USER3 contains bits for logging
+    local logging_bits = param:get('SCR_USER3')
+    if not logging_bits then
+        logging_bits = 1
+    end
+
+    -- TODO - Set logging flags from logging_bits
+
+    local config_range_model = {
+        model_bearing_N_rad = math.pi,
+        vertices = {{5, 0}, {30, 10}, {40, 10}, {50, 0}},
+    }
+
+    local config_measurement_noise = {
+        mean = 0.0,
+        std_dev = 0.0,
+        outlier_rate_ops = 0.0,
+        outlier_mean = 0.0,
+        outlier_std_dev = 0.0,
+        delay_s = 0.0,
+        callback_interval_ms = UPDATE_PERIOD_MS,
+    }
+
+    local config_signal_quality_noise = {
+        mean = 0.0,
+        std_dev = 0.0,
+        outlier_rate_ops = 0.0,
+        outlier_mean = 0.0,
+        outlier_std_dev = 0.0,
+        delay_s = 0.0,
+        callback_interval_ms = UPDATE_PERIOD_MS,
+    }
+
+    -- config_index = 1 is default
+    if config_index == 2 then
+        config_measurement_noise.std_dev = .1
+        config_measurement_noise.outlier_rate_ops = .25
+        config_measurement_noise.outlier_mean = 5
+    end
+
+    range_model = range_model_factory(config_range_model.model_bearing_N_rad,
+    bottom_depth_m, config_range_model.vertices)
+    measurement_noise_func = add_noise_funcfactory(config_measurement_noise)
+
+
+    -- Constrain signal quality values
+    local signal_quality_noise_pre = add_noise_funcfactory(config_signal_quality_noise)
+    signal_quality_noise_func = function(m)
+        m = signal_quality_noise_pre(m)
+        if m > SIGNAL_QUALITY_MAX then
+            return SIGNAL_QUALITY_MAX
+        end
+        if m < SIGNAL_QUALITY_MIN then
+            return SIGNAL_QUALITY_MIN
+        end
+        return m
+    end
+
 end
 
 -------------------------------------------------------------------------------
@@ -393,51 +645,44 @@ local function update_run()
     local loc_c = ahrs:get_location()
 
     -- Check if we have to set or clear the origin
-    if arming:is_armed() ~= sea_floor_model:valid_origin() then
+    if arming:is_armed() ~= range_model:is_origin_valid() then
         if arming:is_armed() then
-            send("Starting to send sea floor range data")
-            sea_floor_model:set_origin(loc_c)
+            if loc_c then
+                send("Starting to send sea floor range data")
+                range_model:set_origin(loc_c)
+            end
         else
             send("Ending range data")
-            sea_floor_model:set_origin(nil)
+            range_model:set_origin(nil)
         end
     end
 
     -- Update with range finder driver
-    local error_str = range_finder_driver(loc_c)
-    if error_str then
-        return failed(error_str)
-    end
-
-    -- Log some data
-    if sea_floor_model.range_m then
-        send("RNGFND", string.format("range %.2f, sub_z %.2f, bottom_z %.2f",
-            sea_floor_model.range_m, sea_floor_model.sub_z_m, sea_floor_model.bottom_z_m))
-        logger:write('RNFN', 'sub_z,bottom_z,true_rngfnd,rngfnd', 'ffff', 'mmmm', '----',
-            sea_floor_model.sub_z_m, sea_floor_model.bottom_z_m, sea_floor_model.range_m, sea_floor_model.range_m)
-    else
-        send("RNGFND", "failed to find a range. Maybe sub below bottom.")
-    end
+    range_finder_driver(loc_c)
 
     return update_run, UPDATE_PERIOD_MS
 end
 
 local function update_init()
     if Parameter('RNGFND1_TYPE'):get() ~= RNGFND_TYPE_LUA then
-        return failed("LUA range finder driver not enabled")
+        return fatal_error("LUA range finder driver not enabled")
     end
     if rangefinder:num_sensors() < 1 then
-        return failed("LUA range finder driver not connected")
+        return fatal_error("LUA range finder driver not connected")
     end
     rngfnd_backend = rangefinder:get_backend(0)
     if not rngfnd_backend then
-        return failed("Range Finder 1 does not exist")
+        return fatal_error("Range Finder 1 does not exist")
     end
     if (rngfnd_backend:type() ~= RNGFND_TYPE_LUA) then
-        return failed("Range Finder 1 is not a LUA driver")
+        return fatal_error("Range Finder 1 is not a LUA driver")
     end
 
-    sea_floor_model = get_sea_floor_model()
+    initialize_model()
+
+    if not range_model or not measurement_noise_func or not signal_quality_noise_func then
+        return fatal_error("Could not initialize model")
+     end
 
     return update_run, 0
 end
