@@ -288,7 +288,7 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
             "RNGFND1_MAX_CM": 3000,
             "SCR_USER1": 1,             # Configuration bundle 1
             "SCR_USER2": 50,            # Depth in meters
-            "SCR_USER3": 1,             # Output log records
+            "SCR_USER3": 101,             # Output log records
         })
 
         self.install_example_script_context("sub_test_synthetic_seafloor.lua")
@@ -345,7 +345,7 @@ class AutoTestSub(vehicle_test_suite.TestSuite):
             "RNGFND1_MAX_CM": 3000,
             "SCR_USER1": 1,             # Configuration bundle 1
             "SCR_USER2": 50,            # Depth in meters
-            "SCR_USER3": 1,             # Output log records
+            "SCR_USER3": 101,             # Output log records
         })
 
         self.install_example_script_context("sub_test_synthetic_seafloor.lua")

@@ -21,6 +21,7 @@ local SCRIPT_NAME = "sub_test_synthetic_seafloor.lua"
 
 local enable_logger_write = true
 local enable_gcs_send_data = false
+local enable_gcs_send_range = false
 
 -- Copied from libraries/AP_RangeFinder/AP_RangeFinder.h enum RangeFinder::Type {}.
 local RNGFND_TYPE_LUA = 36.0
@@ -52,7 +53,7 @@ local gcs_send_funcfactory = function(name, eat_messages_period_s, msg_severity)
         if not msg_severity then msg_severity = 6 end
         if not eat_messages_period_s then eat_messages_period_s = 1.0 end
         
-        local send_str = nil
+        local send_str
 
         if not str2 or #str2 == 0 then
             send_str = string.format("%s: %s", name, str1)
@@ -74,17 +75,9 @@ local gcs_send_funcfactory = function(name, eat_messages_period_s, msg_severity)
             local eaten_count = gcs_eaten_count[str1]
             if eaten_count then
                 gcs_eaten_count[str1] = nil
-                if str2 then
-                    send_str = string.format("%s: %s %s (+%i)", name, str1, str2, eaten_count)
-                else
-                    send_str = string.format("%s: %s (+%i)", name, str1, eaten_count)
-                end
+                send_str = string.format("%s: %s %s (+%i)", name, str1, str2, eaten_count)
             else
-                if str2 then
-                    send_str = string.format("%s: %s %s", name, str1, str2)
-                else
-                    send_str = string.format("%s: %s", name, str1)
-                end
+                send_str = string.format("%s: %s %s", name, str1, str2)
             end
 
             gcs_send_times[str1] = time_curr_s
@@ -95,6 +88,8 @@ local gcs_send_funcfactory = function(name, eat_messages_period_s, msg_severity)
 end
 
 local send = gcs_send_funcfactory(TEST_ID_STR, 1.0, 3)
+-- A send function used to send true range messages at a different rate.
+local send_quick = gcs_send_funcfactory(TEST_ID_STR, 0.5, 3)
 
 local function fatal_error(error)
     send(string.format("FATAL ERROR '%s': %s", SCRIPT_NAME, error))
@@ -141,13 +136,13 @@ local function profile_factory(vertices)
         table.insert(sections, section_factory(vertex1[1], vertex1[2], vertex1[1] - 1, vertex1[2]))
     end
 
-    local last_vertex = nil
+    local last_vertex
     for _, vertex in pairs(vertices) do
         if not last_vertex then
             last_vertex = vertex
         else
             local section = section_factory(last_vertex[1], last_vertex[2], vertex[1], vertex[2])
-            if math.abs(section.vx) > 1.e-6 or math.abs(section.vy) > 1.e-6 then
+            if math.abs(section.vx) > 1.0e-6 or math.abs(section.vy) > 1.0e-6 then
                 -- Only add section if it has non-zero length, otherwise ignore this vertex.
                 table.insert(sections, section)
                 last_vertex = vertex
@@ -163,7 +158,7 @@ local function profile_factory(vertices)
 
     -- Returns the distance to the closest section.
     sections.intersect = function(self, ray)
-        local d = nil
+        local d
 
         for i, segment in ipairs(self) do
 
@@ -215,7 +210,7 @@ do  -- Some code to test functionality and illustrate usage
                     string.format(" : s_actual %s, s_expected %s", actual_str, expected_str))
             end
         else
-            if math.abs(s_actual - s_expected) > 1.e-6 or math.abs(r_actual - r_expected) > 1.e-6 then
+            if math.abs(s_actual - s_expected) > 1.0e-6 or math.abs(r_actual - r_expected) > 1.0e-6 then
                 send(string.format("intersect failed  : x %.2f, z %.2f, psi %.2f", x, z, psi) ..
                     string.format(" : s_actual %.2f, s_expected %.2f, r_actual %.2f, r_expected %.2f", 
                         s_actual, s_expected, r_actual, r_expected))
@@ -258,7 +253,7 @@ do  -- Some code to test functionality and illustrate usage
         -- Test the profile:intersect method.
         local d_actual = profile:intersect(ray)
 
-        if math.abs(d_actual - d_expected) > 1.e-6 then
+        if math.abs(d_actual - d_expected) > 1.0e-6 then
             send(string.format("intersect failed x %.2f, z %.2f, psi %.2f, d_actual %.2f, d_expected %.2f",
                 x, z, psi, d_actual, d_expected))
         end
@@ -306,7 +301,7 @@ end
 ---@field delay_s number                -- Delay between measurement request and measurement return (0 => no delay)
 ---@field callback_interval_ms number   -- Delay between calls of the add noise function
 
--- This factory creates a function that will take a measurement m and addd noise to it
+-- This factory creates a function that will take a measurement m and add noise to it
 ---@param config NoiseModelConfig
 local function add_noise_funcfactory(config)
 
@@ -447,7 +442,7 @@ end
 ---@return RangeModel
 local function range_model_factory(model_bearing_N_rad, model_depth_m, vertices)
 
-    ---@class Location_ud
+    ---@type Location_ud
     local origin_loc
 
     local profile = profile_factory(vertices)
@@ -478,9 +473,10 @@ local function range_model_factory(model_bearing_N_rad, model_depth_m, vertices)
         -- the sub is above that origin. And also calculate the depth of the
         -- sea floor below the sub's location.
         -- For the sea floor depth:
-        -- bottom_z = model_depth_m + profile(0)
+        -- bottom_z = model_depth_m - profile(0)
+        -- Positive z is down, positive profile is up
         local bottom_ray = ray_factory(sub_northly_M_m, 0, 0)
-        self.bottom_z_m = model_depth_m + profile:intersect(bottom_ray)
+        self.bottom_z_m = model_depth_m - profile:intersect(bottom_ray)
 
         -- For the sub range measurement:
         -- model_range = model_depth_m - sub_z
@@ -559,6 +555,9 @@ local function range_finder_driver(sub_loc)
         send("RNGFND", string.format("true range %.2f, range %.2f, sub_z %.2f, bottom_z %.2f",
             true_range_m, range_m, range_model.sub_z_m, range_model.bottom_z_m))
     end
+    if enable_gcs_send_range then
+        send_quick("#TR#", string.format("%7.2f", true_range_m))
+    end
 end
 
 -------------------------------------------------------------------------------
@@ -582,7 +581,14 @@ local function initialize_model()
         logging_bits = 1
     end
 
-    -- TODO - Set logging flags from logging_bits
+
+    -- Set logging flags from logging_bits
+    lb_str = tostring(math.floor(logging_bits))
+    enable_logger_write = string.sub(lb_str, -1, -1) == '1'
+    enable_gcs_send_data = string.sub(lb_str, -2, -2) == '1'
+    enable_gcs_send_range = string.sub(lb_str, -3, -3) == '1'
+
+    send(string.format("lb_str: '%s'", lb_str))
 
     local config_range_model = {
         model_bearing_N_rad = math.pi,
@@ -687,6 +693,6 @@ local function update_init()
     return update_run, 0
 end
 
-send("Loaded sub_test_above_terrain_frame.lua")
+send(string.format("Loaded %s", SCRIPT_NAME))
 
 return update_init, 0
