@@ -583,16 +583,16 @@ local function initialize_model()
 
 
     -- Set logging flags from logging_bits
-    lb_str = tostring(math.floor(logging_bits))
+    local lb_str = tostring(math.floor(logging_bits))
     enable_logger_write = string.sub(lb_str, -1, -1) == '1'
     enable_gcs_send_data = string.sub(lb_str, -2, -2) == '1'
     enable_gcs_send_range = string.sub(lb_str, -3, -3) == '1'
 
-    send(string.format("lb_str: '%s'", lb_str))
+    local config_simple_ridge = {{5, 0}, {30, 10}, {40, 10}, {50, 0}}
 
     local config_range_model = {
         model_bearing_N_rad = math.pi,
-        vertices = {{5, 0}, {30, 10}, {40, 10}, {50, 0}},
+        vertices = config_simple_ridge,
     }
 
     local config_measurement_noise = {
@@ -615,11 +615,14 @@ local function initialize_model()
         callback_interval_ms = UPDATE_PERIOD_MS,
     }
 
-    -- config_index = 1 is default
+    -- config_index = 1 is default with  no noise
+    -- config_index = 2 has a little noise
     if config_index == 2 then
         config_measurement_noise.std_dev = .1
         config_measurement_noise.outlier_rate_ops = .25
-        config_measurement_noise.outlier_mean = 5
+        config_measurement_noise.outlier_mean = 8
+        config_measurement_noise.outlier_std_dev = 2
+        config_measurement_noise.delay_s = 0.00
     end
 
     range_model = range_model_factory(config_range_model.model_bearing_N_rad,
